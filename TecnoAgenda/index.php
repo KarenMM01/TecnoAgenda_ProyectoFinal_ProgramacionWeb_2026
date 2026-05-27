@@ -6,7 +6,7 @@ session_start();
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=1200, initial-scale=0.35, maximum-scale=3.0, user-scalable=yes">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TecnoAgenda - Conectando Estudiantes y Docentes</title>
 
     <link rel="preconnect" href="https://fonts.googleapis.com">

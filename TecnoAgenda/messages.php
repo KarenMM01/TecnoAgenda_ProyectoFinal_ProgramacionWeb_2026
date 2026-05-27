@@ -241,7 +241,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=1200, initial-scale=0.35, maximum-scale=3.0, user-scalable=yes">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Mensajes - TecnoAgenda</title>
 <link href="https://fonts.googleapis.com/css2?family=Aclonica&family=Arima:wght@400;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -358,6 +358,7 @@ body { background:var(--crema); display:flex; height:100vh; overflow:hidden; }
     body { flex-direction: column; }
     .sidebar { width: 100%; height: 65px; flex-direction: row; padding: 0; justify-content: space-around; z-index: 1000; position: fixed; bottom: 0; }
     .sidebar-bottom { display: none; }
+    .sidebar-icons { flex-direction: row; width: 100%; justify-content: space-around; display: flex; }
     .nav-item { padding: 10px; justify-content: center; flex: 1; }
     .nav-item span, .menu-btn { display: none !important; }
     .sidebar.collapsed { width: 100%; }

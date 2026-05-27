@@ -82,17 +82,7 @@ async function renderMaterials(allRequests = []) {
 
     list.innerHTML = '';
 
-    const myAdvisors = allRequests
-        .filter(r => r.student_email === userEmail && r.status === 'accepted')
-        .map(r => r.advisor_email);
-
     const filteredFolders = allFolders.filter(f => {
-        if (userRol.toLowerCase() === 'estudiante') {
-            return myAdvisors.includes(f.creador_email);
-        }
-        if (userRol.toLowerCase() === 'docente' || userRol.toLowerCase() === 'tutor') {
-             if (f.creador_email !== userEmail && userRol.toLowerCase() !== 'administrador' && userRol.toLowerCase() !== 'admin') return false;
-        }
         if (filterMateria && f.nombre !== filterMateria) return false;
         return true;
     });

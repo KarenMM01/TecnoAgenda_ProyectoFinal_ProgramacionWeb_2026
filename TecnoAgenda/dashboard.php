@@ -95,7 +95,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $stmt = $conexion->prepare("
             SELECT nombre, email, rol, carrera, semestre, avatar
             FROM usuarios
-            WHERE LOWER(rol) IN ('docente', 'tutor', 'administrador', 'admin')
+            WHERE LOWER(rol) IN ('docente', 'tutor')
             AND email <> :email
             ORDER BY nombre ASC
         ");
@@ -363,7 +363,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=1200, initial-scale=0.35, maximum-scale=3.0, user-scalable=yes">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TecnoAgenda - Dashboard</title>
     <link href="https://fonts.googleapis.com/css2?family=Aclonica&family=Arima:wght@400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -709,6 +709,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             body { flex-direction: column; font-size: 0.85rem; }
             .sidebar { width: 100%; height: 60px; flex-direction: row; padding: 0; justify-content: space-around; z-index: 1000; position: fixed; bottom: 0; }
             .sidebar-bottom { display: none; }
+            .sidebar-icons { flex-direction: row; width: 100%; justify-content: space-around; display: flex; }
             .nav-item { padding: 8px; justify-content: center; flex: 1; }
             .nav-item i { font-size: 1.2rem; }
             .menu-btn-container { display: none; }

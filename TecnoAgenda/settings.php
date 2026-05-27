@@ -44,7 +44,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=1200, initial-scale=0.35, maximum-scale=3.0, user-scalable=yes">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Configuración - TecnoAgenda</title>
     <link href="https://fonts.googleapis.com/css2?family=Aclonica&family=Arima:wght@400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -69,7 +69,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .sidebar.collapsed { width: 70px; }
         .sidebar.collapsed .nav-text { display: none; }
         .sidebar.collapsed .sidebar-logo-text { display: none; }
-        .menu-btn-container { padding: 10px 20px 10px 18px; cursor: pointer; font-size: 1.5rem; color: #111; }
+        .menu-btn-container { padding: 10px 20px 10px 18px; cursor: pointer; font-size: 1.6rem; color: #111; }
         .sidebar-icons { display: flex; flex-direction: column; flex: 1; }
         .sidebar-bottom { padding-bottom: 20px; }
         .nav-item { display: flex; align-items: center; width: 100%; padding: 12px 20px; cursor: pointer; transition: background 0.2s; color: #111; text-decoration: none; white-space: nowrap; }
@@ -186,6 +186,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             body { flex-direction: column; }
             .sidebar { width: 100%; height: 65px; flex-direction: row; padding: 0; justify-content: space-around; z-index: 1000; position: fixed; bottom: 0; }
             .sidebar-bottom { display: none; }
+            .sidebar-icons { flex-direction: row; width: 100%; justify-content: space-around; display: flex; }
             .nav-item { padding: 10px; justify-content: center; flex: 1; }
             .nav-text, .menu-btn-container { display: none !important; }
             .sidebar.collapsed { width: 100%; }
