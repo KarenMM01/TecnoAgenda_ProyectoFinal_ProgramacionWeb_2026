@@ -48,6 +48,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ':text' => htmlspecialchars(trim($data['text']), ENT_QUOTES)
     ]);
 
+    // Crear notificación para el destinatario
+    $shortText = mb_strlen($data['text']) > 60 ? mb_substr($data['text'], 0, 60).'...' : $data['text'];
+    $notifStmt = $conexion->prepare("
+        INSERT INTO notificaciones (para_email, tipo, titulo, mensaje, de_nombre, de_email)
+        VALUES (:para_email, 'mensaje', :titulo, :mensaje, :de_nombre, :de_email)
+    ");
+    $notifStmt->execute([
+        ':para_email' => $data['to'],
+        ':titulo'     => '💬 Nuevo mensaje de '.$user['nombre'],
+        ':mensaje'    => $user['nombre'].' te envió: "'.$shortText.'"',
+        ':de_nombre'  => $user['nombre'],
+        ':de_email'   => $user['email']
+    ]);
+
     echo json_encode([
         'status' => 'ok'
     ]);

@@ -246,47 +246,83 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     if ($action === 'get_notifications') {
         $notifs = [];
 
+        // 1) Solicitudes (docentes/admin ven las pendientes, estudiantes ven respuestas)
         if ($userRol !== 'estudiante') {
             $stmt = $conexion->prepare("
-                SELECT *
-                FROM solicitudes
-                WHERE advisor_email = :email
-                AND status = 'pending'
+                SELECT * FROM solicitudes
+                WHERE advisor_email = :email AND status = 'pending'
                 ORDER BY fecha DESC
             ");
             $stmt->execute([':email' => $user['email']]);
-            $requests = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-            foreach ($requests as $r) {
+            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
                 $notifs[] = [
-                    'id' => $r['id'],
-                    'tipo' => 'solicitud',
-                    'mensaje' => 'El alumno ' . $r['student_name'] . ' quiere unirse a tu asesoría.',
-                    'data' => $r
+                    'id'        => 'sol_'.$r['id'],
+                    'tipo'      => 'solicitud',
+                    'titulo'    => 'Solicitud de Asesoría',
+                    'mensaje'   => 'El alumno '.$r['student_name'].' quiere unirse a tu asesoría.',
+                    'de_nombre' => $r['student_name'],
+                    'de_email'  => $r['student_email'],
+                    'leida'     => false,
+                    'fecha'     => $r['fecha'],
+                    'data'      => $r
                 ];
             }
         } else {
             $stmt = $conexion->prepare("
-                SELECT *
-                FROM solicitudes
-                WHERE student_email = :email
-                AND status IN ('accepted', 'rejected')
+                SELECT * FROM solicitudes
+                WHERE student_email = :email AND status IN ('accepted','rejected')
                 ORDER BY fecha DESC
             ");
             $stmt->execute([':email' => $user['email']]);
-            $requests = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-            foreach ($requests as $r) {
+            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
                 $notifs[] = [
-                    'id' => $r['id'],
-                    'tipo' => 'respuesta',
-                    'mensaje' => 'Tu solicitud para unirte al asesor ' . $r['advisor_email'] . ' fue ' . ($r['status'] === 'accepted' ? 'ACEPTADA' : 'RECHAZADA') . '.',
-                    'status' => $r['status']
+                    'id'        => 'sol_'.$r['id'],
+                    'tipo'      => 'respuesta',
+                    'titulo'    => 'Respuesta a tu Solicitud',
+                    'mensaje'   => 'Tu solicitud al asesor '.$r['advisor_email'].' fue '.($r['status']==='accepted'?'ACEPTADA ✅':'RECHAZADA ❌').'.',
+                    'de_nombre' => $r['advisor_email'],
+                    'de_email'  => $r['advisor_email'],
+                    'leida'     => false,
+                    'fecha'     => $r['fecha'],
+                    'status'    => $r['status']
                 ];
             }
         }
 
+        // 2) Notificaciones de la tabla notificaciones (mensajes, materiales)
+        $stmt = $conexion->prepare("
+            SELECT * FROM notificaciones
+            WHERE para_email = :email AND leida = FALSE
+            ORDER BY fecha DESC
+            LIMIT 30
+        ");
+        $stmt->execute([':email' => $user['email']]);
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $n) {
+            $notifs[] = [
+                'id'        => 'notif_'.$n['id'],
+                'tipo'      => $n['tipo'],
+                'titulo'    => $n['titulo'],
+                'mensaje'   => $n['mensaje'],
+                'de_nombre' => $n['de_nombre'],
+                'de_email'  => $n['de_email'],
+                'leida'     => (bool)$n['leida'],
+                'fecha'     => $n['fecha']
+            ];
+        }
+
+        // Ordenar por fecha desc
+        usort($notifs, function($a, $b) {
+            return strtotime($b['fecha']) - strtotime($a['fecha']);
+        });
+
         echo json_encode($notifs);
+        exit;
+    }
+
+    if ($action === 'mark_notifications_read') {
+        $conexion->prepare("UPDATE notificaciones SET leida = TRUE WHERE para_email = :email")
+                 ->execute([':email' => $user['email']]);
+        echo json_encode(['status' => 'success']);
         exit;
     }
 
@@ -370,6 +406,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             ':archivo' => $file_path,
             ':creador_email' => $user['email']
         ]);
+        // Insertar notificación para todos los demás usuarios
+        $allUsers = $conexion->query("SELECT email FROM usuarios WHERE email <> '".$user['email']."'")->fetchAll(PDO::FETCH_COLUMN);
+        $notifStmt = $conexion->prepare("
+            INSERT INTO notificaciones (para_email, tipo, titulo, mensaje, de_nombre, de_email)
+            VALUES (:para_email, 'material', :titulo, :mensaje, :de_nombre, :de_email)
+        ");
+        foreach ($allUsers as $emailDest) {
+            $notifStmt->execute([
+                ':para_email' => $emailDest,
+                ':titulo'     => '📂 Nuevo material subido',
+                ':mensaje'    => $user['nombre'].' subió el material "'.$titulo.'" en '.$materia.'.',
+                ':de_nombre'  => $user['nombre'],
+                ':de_email'   => $user['email']
+            ]);
+        }
         echo json_encode(['status' => 'success']);
         exit;
     }
@@ -1440,7 +1491,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                             <h2>Notificaciones</h2>
                             <p>Gestiona tus últimas actualizaciones académicas y alertas de tus sesiones programadas.</p>
                         </div>
-                        <button class="btn-mark-read">Marcar todo como leído</button>
+                        <button class="btn-mark-read" onclick="markAllAsRead()">Marcar todo como leído</button>
                     </div>
 
                     <div class="notif-dashboard">
@@ -1998,9 +2049,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         }
 
         async function loadAdminDashboard() {
-            // Cargar Alumnos Activos (unique emails in requests belonging to this advisor)
-            const respReq = await fetch('requests.json?' + new Date().getTime());
-            const reqs = await respReq.json();
+            // Cargar datos principales desde el backend (DB)
+            const formDataMats = new FormData();
+            formDataMats.append('action', 'get_material_data');
+            const respMats = await fetch('dashboard.php', { method: 'POST', body: formDataMats });
+            const dataMats = await respMats.json();
+            
+            const reqs = dataMats.requests;
+            const mats = dataMats.materials;
+            const folders = dataMats.folders;
+
+            // Cargar Eventos desde el backend (DB)
+            const formDataEvts = new FormData();
+            formDataEvts.append('action', 'get_events');
+            const respEvts = await fetch('dashboard.php', { method: 'POST', body: formDataEvts });
+            const events = await respEvts.json();
+
+            // Cargar Alumnos Activos
             const myAccepted = reqs.filter(r => r.advisor_email === userEmail && r.status === 'accepted');
             const myPending = reqs.filter(r => r.advisor_email === userEmail && r.status === 'pending');
             const uniqueStudents = [...new Set(myAccepted.map(r => r.student_email))].length;
@@ -2035,8 +2100,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             }
 
             // Cargar Revisiones Pendientes (materials created by this advisor)
-            const respMat = await fetch('materials.json?' + new Date().getTime());
-            const mats = await respMat.json();
             const myMats = mats.filter(m => m.creador_email === userEmail);
             document.getElementById('stat-pendientes').textContent = myMats.length;
 
@@ -2062,8 +2125,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             });
 
             // Cargar Grupos (Folders) creados por el docente
-            const respFolders = await fetch('folders.json?' + new Date().getTime());
-            const folders = await respFolders.json();
             const myFolders = folders.filter(f => f.creador_email === userEmail);
             
             const groupList = document.getElementById('dash-group-list');
@@ -2096,8 +2157,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             });
 
             // Cargar Próximas Tutorías del Docente (Wide Style)
-            const respEvents = await fetch('events.json?' + new Date().getTime());
-            const events = await respEvents.json();
             
             const myEvents = events.filter(e => e.creador_email === userEmail);
             const myCompleted = myEvents.filter(e => e.status === 'completed');

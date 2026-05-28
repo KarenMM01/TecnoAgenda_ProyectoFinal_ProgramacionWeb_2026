@@ -275,10 +275,10 @@ async function loadNotifications() {
     }
 
     const list = isAdminList || isStudentList;
-    if (!isStudentList) list.innerHTML = '';
+    list.innerHTML = '';
 
-    if (notifs.length === 0 && !isStudentList) {
-        list.innerHTML = '<p style="text-align:center; padding:40px; color:#999; background:white; border-radius:20px;">No tienes solicitudes pendientes en este momento.</p>';
+    if (notifs.length === 0) {
+        list.innerHTML = '<p style="text-align:center; padding:40px; color:#999; background:white; border-radius:20px;">No tienes notificaciones en este momento.</p>';
         return;
     }
 
@@ -304,7 +304,7 @@ async function loadNotifications() {
                     <button class="btn-notif-accept" onclick="respondRequest(${n.id}, 'accepted')">Aceptar</button>
                 </div>
             `;
-        } else {
+        } else if (n.tipo === 'respuesta') {
             const icon = n.status === 'accepted' ? 'fa-check-circle' : 'fa-times-circle';
             const color = n.status === 'accepted' ? '#4e6a55' : '#d9534f';
             const bg = n.status === 'accepted' ? '#f0f4f1' : '#fdf3e9';
@@ -314,6 +314,31 @@ async function loadNotifications() {
                     <div style="display:flex; justify-content:space-between;">
                         <h5>Estado de Solicitud</h5>
                         <span style="font-size:0.7rem; color:#999; font-weight:700;">RECIENTE</span>
+                    </div>
+                    <p style="font-size:0.85rem; color:#666; margin-bottom:15px;">${n.mensaje}</p>
+                    <div class="notif-actions">
+                        <button class="btn-notif-details" onclick="this.parentElement.parentElement.parentElement.remove()">Cerrar</button>
+                    </div>
+                </div>
+            `;
+        } else {
+            const icon = n.tipo === 'material' ? 'fa-folder-open' : 'fa-comment-dots';
+            const color = n.tipo === 'material' ? '#4e6a55' : '#8a4b08';
+            const bg = n.tipo === 'material' ? '#f0f4f1' : '#fdf3e9';
+            
+            const diffMs = Date.now() - new Date(n.fecha).getTime();
+            const diffMins = Math.floor(diffMs / 60000);
+            let timeText = 'AHORA';
+            if (diffMins > 0 && diffMins < 60) timeText = `HACE ${diffMins}M`;
+            else if (diffMins >= 60 && diffMins < 1440) timeText = `HACE ${Math.floor(diffMins/60)}H`;
+            else if (diffMins >= 1440) timeText = `HACE ${Math.floor(diffMins/1440)}D`;
+
+            item.innerHTML = `
+                <div class="notif-card-icon" style="background: ${bg}; color: ${color};"><i class="fas ${icon}"></i></div>
+                <div class="notif-card-content">
+                    <div style="display:flex; justify-content:space-between;">
+                        <h5>${n.titulo}</h5>
+                        <span style="font-size:0.7rem; color:#999; font-weight:700;">${timeText}</span>
                     </div>
                     <p style="font-size:0.85rem; color:#666; margin-bottom:15px;">${n.mensaje}</p>
                     <div class="notif-actions">
@@ -335,6 +360,13 @@ async function respondRequest(id, status) {
     await fetch('dashboard.php', { method: 'POST', body: formData });
     loadNotifications();
     loadMaterials();
+}
+
+async function markAllAsRead() {
+    const formData = new FormData();
+    formData.append('action', 'mark_notifications_read');
+    await fetch('dashboard.php', { method: 'POST', body: formData });
+    loadNotifications();
 }
 
 // --- Gestión de Usuarios (Admin) ---
@@ -410,7 +442,7 @@ async function downloadTeacherReport(email, nombre) {
         const reqs = data.requests || [];
         const mats = data.materials || [];
 
-        const teacherEvents = events.filter(e => e.creador_email === email);
+        const teacherEvents = events.filter(e => e.creador_email === email || e.advisor_email === email);
         const teacherReqs = reqs.filter(r => r.advisor_email === email && r.status === 'accepted');
         const teacherMats = mats.filter(m => m.creador_email === email);
         
@@ -493,11 +525,11 @@ function updateFolderSelects() {
     if (!select) return;
     select.innerHTML = '';
     
-    const myFolders = allFolders.filter(f => f.creador_email === userEmail || userRol.toLowerCase() === 'administrador' || userRol.toLowerCase() === 'admin');
-    myFolders.forEach(f => {
+    const uniqueMaterias = [...new Set(allFolders.map(f => f.nombre))];
+    uniqueMaterias.forEach(m => {
         const opt = document.createElement('option');
-        opt.value = f.nombre;
-        opt.textContent = f.nombre;
+        opt.value = m;
+        opt.textContent = m;
         select.appendChild(opt);
     });
 }
