@@ -54,7 +54,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         exit;
     }
 
-    if ($action === 'cancel_event' && $userRol !== 'estudiante') {
+    if ($action === 'cancel_event') {
         $stmt = $conexion->prepare("UPDATE eventos SET status = 'canceled' WHERE id = :id");
         $stmt->execute([':id' => $_POST['event_id']]);
         echo json_encode(['status' => 'success']);
@@ -90,6 +90,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         exit;
     }
 
+    // PERFIL
+    if ($action === 'update_profile') {
+        $stmt = $conexion->prepare("
+            UPDATE usuarios 
+            SET nombre = :nombre, fecha_nacimiento = :fecha, carrera = :carrera, semestre = :semestre, 
+                descripcion = :descripcion, materias_inscritas = :materias, avatar = :avatar
+                " . (!empty($_POST['password']) ? ", password = :password" : "") . "
+            WHERE email = :email
+        ");
+        
+        $params = [
+            ':nombre' => $_POST['nombre'],
+            ':fecha' => $_POST['fechaNacimiento'],
+            ':carrera' => $_POST['carrera'],
+            ':semestre' => $_POST['semestre'],
+            ':descripcion' => $_POST['descripcion'],
+            ':materias' => $_POST['materias'],
+            ':avatar' => $_POST['avatar'],
+            ':email' => $user['email']
+        ];
+
+        if (!empty($_POST['password'])) {
+            $params[':password'] = $_POST['password'];
+        }
+
+        $stmt->execute($params);
+
+        $_SESSION['user']['nombre'] = $_POST['nombre'];
+        $_SESSION['user']['fecha_nacimiento'] = $_POST['fechaNacimiento'];
+        $_SESSION['user']['carrera'] = $_POST['carrera'];
+        $_SESSION['user']['semestre'] = $_POST['semestre'];
+        $_SESSION['user']['descripcion'] = $_POST['descripcion'];
+        $_SESSION['user']['materias_inscritas'] = $_POST['materias'];
+        $_SESSION['user']['avatar'] = $_POST['avatar'];
+
+        echo json_encode(['status' => 'success', 'message' => 'Perfil actualizado correctamente.']);
+        exit;
+    }
+
     // USUARIOS / ASESORES
     if ($action === 'get_advisors') {
         $stmt = $conexion->prepare("
@@ -117,6 +156,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     if ($action === 'delete_user' && ($userRol === 'administrador' || $userRol === 'admin')) {
         $stmt = $conexion->prepare("DELETE FROM usuarios WHERE email = :email");
         $stmt->execute([':email' => $_POST['user_email']]);
+        echo json_encode(['status' => 'success']);
+        exit;
+    }
+
+    // LLAMADAS / CONTACTOS
+    if ($action === 'get_all_contacts') {
+        $stmt = $conexion->prepare("
+            SELECT id, nombre, email, rol, avatar
+            FROM usuarios
+            WHERE email <> :email
+            ORDER BY nombre ASC
+        ");
+        $stmt->execute([':email' => $user['email']]);
+        echo json_encode($stmt->fetchAll(PDO::FETCH_ASSOC));
+        exit;
+    }
+
+    if ($action === 'get_call_history') {
+        // Por ahora regresamos un historial vacío si no hay tabla
+        echo json_encode([]);
+        exit;
+    }
+
+    if ($action === 'save_call') {
         echo json_encode(['status' => 'success']);
         exit;
     }
@@ -444,8 +507,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         .sidebar { width: var(--sidebar-width); background-color: var(--verde-tecno); display: flex; flex-direction: column; padding-top: 15px; z-index: 10; transition: width 0.3s ease; }
         .sidebar.expanded { width: 250px; }
         .sidebar-bottom { margin-top: auto; padding-bottom: 20px; }
-        .nav-item { display: flex; align-items: center; width: 100%; padding: 12px 25px; cursor: pointer; transition: background 0.2s; color: #111; text-decoration: none; }
+        .nav-item { display: flex; align-items: center; width: 100%; padding: 12px 25px; cursor: pointer; transition: background 0.2s, padding-left 0.2s; color: #111; text-decoration: none; }
         .nav-item:hover { background-color: rgba(0, 0, 0, 0.05); }
+        .nav-item.active { background-color: rgba(0, 0, 0, 0.15); border-left: 4px solid var(--naranja-soft); padding-left: 21px; }
         .nav-item i { font-size: 1.6rem; min-width: 30px; text-align: center; }
         .nav-text { margin-left: 20px; font-size: 1.1rem; font-weight: 500; opacity: 0; display: none; white-space: nowrap; }
         .sidebar.expanded .nav-text { display: block; opacity: 1; }
@@ -802,7 +866,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             .report-grid { grid-template-columns: 1fr; }
             .materiales-body { flex-direction: column; }
             .materiales-sidebar { width: 100%; }
-            .calls-body { grid-template-columns: 1fr; }
+            .calls-body { display: block !important; }
+            .calls-side { display: none !important; }
             
             .profile-container { flex-direction: column; }
             .profile-left { width: 100%; }
@@ -812,6 +877,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             .calendar-layout { flex-direction: column; }
             .calendar-main { border-right: none; border-bottom: 1px solid #f0f0f0; padding: 15px; }
             .calendar-right-panel { width: 100%; padding: 15px; }
+            .calendar-day .event-tag.tag-virtual span,
+            .calendar-day .event-tag.tag-llamada span { display: none; }
+            .calendar-day .event-tag.tag-virtual,
+            .calendar-day .event-tag.tag-llamada { justify-content: center; padding: 6px; }
             
             .dash-main-layout { grid-template-columns: 1fr; gap: 20px; }
             .notif-dashboard { grid-template-columns: 1fr; gap: 20px; }
@@ -1157,7 +1226,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         <div class="form-grid-profile">
                             <div class="input-grp full-width"><label>Nombre</label><input type="text" id="prof-nombre" value="<?php echo htmlspecialchars($user['nombre']); ?>" readonly></div>
                             <div class="input-grp full-width"><label>Descripción / Biografía</label><textarea id="prof-descripcion" rows="3" style="background: #f5f1e8; border: 1px solid #d5d0c3; padding: 10px; border-radius: 6px; resize: none;" readonly><?php echo htmlspecialchars($user['descripcion'] ?? ''); ?></textarea></div>
-                            <div class="input-grp"><label>Fecha de Nacimiento</label><input type="date" id="prof-fecha" value="<?php echo htmlspecialchars($user['fechaNacimiento']); ?>" readonly></div>
+                            <div class="input-grp"><label>Fecha de Nacimiento</label><input type="date" id="prof-fecha" value="<?php echo htmlspecialchars($user['fecha_nacimiento'] ?? ''); ?>" readonly></div>
                             <div class="input-grp"><label>Carrera</label>
                                 <select id="prof-carrera" disabled>
                                     <option value="TICS" <?php echo $user['carrera'] == 'TICS' ? 'selected' : ''; ?>>TICS</option>
@@ -1170,7 +1239,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                             </div>
                             <div class="input-grp"><label>Semestre</label><input type="number" id="prof-semestre" value="<?php echo $user['semestre']; ?>" readonly></div>
                             <div class="input-grp"><label>Rol</label><input type="text" id="prof-rol" value="<?php echo $user['rol']; ?>" readonly class="locked"></div>
-                            <div class="input-grp full-width"><label>Contraseña</label><div class="icon-input"><input type="password" id="prof-pass" placeholder="Dejar en blanco para no cambiar" readonly><i class="fas fa-eye-slash" id="toggle-prof-pass"></i></div></div>
+                            <div class="input-grp full-width"><label>Contraseña</label><div class="icon-input"><input type="password" id="prof-pass" value="<?php echo htmlspecialchars($user['password'] ?? ''); ?>" placeholder="Contraseña" readonly><i class="fas fa-eye-slash" id="toggle-prof-pass"></i></div></div>
                             <div class="input-grp full-width" id="materias-grp" <?php echo (strtolower(trim($user['rol'] ?? '')) === 'estudiante') ? 'style="display:none;"' : ''; ?>><label>Especialidad / Materias que Imparto</label><input type="text" id="prof-materias" value="<?php echo htmlspecialchars($user['materias_inscritas'] ?? ''); ?>" placeholder="Ej. Matemáticas, Programación..." readonly></div>
                         </div>
                     </div>
@@ -1493,7 +1562,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                             <i class="fas fa-search"></i>
                             <input type="text" id="calls-search-input" placeholder="Buscar usuario por nombre, correo o rol...">
                         </div>
-                        <div id="contacts-list">
+                        <div id="contacts-list" style="display: flex; flex-direction: column; gap: 15px;">
                             <!-- Poblado dinámicamente por JS -->
                         </div>
                     </div>
@@ -1652,6 +1721,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             menuItems.forEach(item => {
                 item.addEventListener('click', () => {
                     const text = item.querySelector('.nav-text')?.textContent;
+                    
+                    // Actualizar clase activa en sidebar
+                    menuItems.forEach(i => i.classList.remove('active'));
+                    item.classList.add('active');
+
                     hideAllContainers();
                     
                     if (text === 'Inicio') {
@@ -1726,19 +1800,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
             if (btnSave) {
                 btnSave.addEventListener('click', async () => {
-                    const data = {
-                        action: 'update_profile',
-                        nombre: document.getElementById('prof-nombre').value,
-                        fechaNacimiento: document.getElementById('prof-fecha').value,
-                        carrera: document.getElementById('prof-carrera').value,
-                        semestre: document.getElementById('prof-semestre').value,
-                        password: document.getElementById('prof-pass').value,
-                        rol: userRol,
-                        descripcion: document.getElementById('prof-descripcion').value,
-                        materias: document.getElementById('prof-materias').value,
-                        avatar: document.getElementById('prof-avatar-img').src
-                    };
-                    const resp = await fetch('dashboard.php', { method: 'POST', body: JSON.stringify(data) });
+                    const fd = new FormData();
+                    fd.append('action', 'update_profile');
+                    fd.append('nombre', document.getElementById('prof-nombre').value);
+                    fd.append('fechaNacimiento', document.getElementById('prof-fecha').value);
+                    fd.append('carrera', document.getElementById('prof-carrera').value);
+                    fd.append('semestre', document.getElementById('prof-semestre').value);
+                    fd.append('password', document.getElementById('prof-pass').value);
+                    fd.append('descripcion', document.getElementById('prof-descripcion').value);
+                    fd.append('materias', document.getElementById('prof-materias').value);
+                    fd.append('avatar', document.getElementById('prof-avatar-img').src);
+
+                    const resp = await fetch('dashboard.php', { method: 'POST', body: fd });
                     const res = await resp.json();
                     if (res.status === 'success') {
                         alert(res.message);
@@ -1861,18 +1934,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             const urlParams = new URLSearchParams(window.location.search);
             const initialTab = urlParams.get('tab');
             
+            function setActiveSidebar(tabText) {
+                menuItems.forEach(i => i.classList.remove('active'));
+                menuItems.forEach(i => {
+                    if (i.querySelector('.nav-text')?.textContent === tabText) {
+                        i.classList.add('active');
+                    }
+                });
+            }
+            
             if (initialTab === 'perfil') {
                 hideAllContainers();
+                setActiveSidebar(''); // Ninguno activo en el sidebar
+                document.getElementById('profile-container').style.display = 'flex';
                 document.getElementById('profile-container').classList.add('active');
                 topbarTitle.textContent = 'PERFIL';
             } else if (initialTab === 'materiales') {
                 hideAllContainers();
+                setActiveSidebar('Materiales');
+                document.getElementById('materiales-container').style.display = 'flex';
                 document.getElementById('materiales-container').classList.add('active');
                 topbarTitle.textContent = 'MATERIALES';
                 loadMaterials();
             } else {
                 // Por defecto, cargar lo necesario
                 hideAllContainers();
+                setActiveSidebar('Inicio');
                 loadMaterials();
                 loadNotifications();
                 if (typeof userRol !== 'undefined' && userRol.toLowerCase() !== 'estudiante') {

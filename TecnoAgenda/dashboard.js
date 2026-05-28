@@ -122,9 +122,15 @@ async function renderMaterials(allRequests = []) {
                     <i class="fas fa-chevron-down folder-chevron" style="transition: transform 0.3s;"></i>
                 </div>
             </div>
-            <div class="materiales-list-content" style="display: none; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; padding: 10px;">
+            <div class="materiales-list-content" style="display: ${search ? 'grid' : 'none'}; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; padding: 10px;">
             </div>
         `;
+
+        // Si hay búsqueda activa, rotar el chevron para indicar que está abierto
+        if (search) {
+            const chevron = folderSection.querySelector('.folder-chevron');
+            if (chevron) chevron.style.transform = 'rotate(180deg)';
+        }
 
         const contentDiv = folderSection.querySelector('.materiales-list-content');
         visibleMaterials.forEach(m => {
@@ -753,6 +759,9 @@ function showEventDetail(event) {
                 actionBox.innerHTML += `
                     <button class="btn-new-entry" style="width: 100%; background: var(--naranja-soft); color: white; margin-top: 10px;" onclick="openRatingModal(${event.id})">
                         <i class="fas fa-star"></i> Finalizar y Calificar
+                    </button>
+                    <button class="btn-new-entry" style="width: 100%; background: #ff4757; color: white; margin-top: 10px;" onclick="cancelEvent(${event.id})">
+                        <i class="fas fa-times-circle"></i> Cancelar Asesoría
                     </button>
                 `;
             } else if (event.status === 'completed' && !event.rating) {

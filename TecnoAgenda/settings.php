@@ -283,15 +283,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     <div class="main-container">
         <div class="topbar">
-            <div class="search-bar">
-                <i class="fas fa-search"></i>
-                <input type="text" placeholder="Busqueda de Persona">
-            </div>
-            <div class="topbar-right">
-                <i class="far fa-bell" style="cursor:pointer;"></i>
-                <i class="fas fa-cog" style="cursor:pointer; color: var(--verde-oscuro);"></i>
-                <img src="<?php echo $user['avatar'] ?? 'https://cdn-icons-png.flaticon.com/512/149/149071.png'; ?>" alt="Avatar">
-            </div>
+            <!-- Buscador e iconos eliminados por solicitud -->
         </div>
 
         <div class="content">
@@ -453,6 +445,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 document.querySelectorAll('.theme-option').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
                 currentTheme = btn.dataset.theme;
+                if (currentTheme === 'Oscuro') {
+                    document.body.classList.add('dark-theme');
+                } else {
+                    document.body.classList.remove('dark-theme');
+                }
             });
         });
 

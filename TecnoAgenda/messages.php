@@ -403,9 +403,9 @@ body { background:var(--crema); display:flex; height:100vh; overflow:hidden; }
             <input type="text" id="search-contacts" placeholder="Busqueda de Persona">
         </div>
         <div class="topbar-right">
-            <i class="far fa-bell" style="cursor:pointer;"></i>
-            <a href="settings.php" style="color:inherit;"><i class="fas fa-cog"></i></a>
-            <img src="<?php echo $user['avatar'] ?? 'https://cdn-icons-png.flaticon.com/512/149/149071.png'; ?>" alt="Avatar">
+            <a href="dashboard.php" title="Notificaciones" style="color:inherit;"><i class="far fa-bell" style="cursor:pointer;"></i></a>
+            <a href="settings.php" title="Ajustes" style="color:inherit;"><i class="fas fa-cog" style="cursor:pointer;"></i></a>
+            <a href="dashboard.php" title="Mi Perfil" style="color:inherit; display:flex;"><img src="<?php echo $user['avatar'] ?? 'https://cdn-icons-png.flaticon.com/512/149/149071.png'; ?>" alt="Avatar" style="cursor:pointer;"></a>
         </div>
     </div>
 
@@ -413,7 +413,7 @@ body { background:var(--crema); display:flex; height:100vh; overflow:hidden; }
         <!-- Panel de Contactos -->
         <div class="contacts-panel">
             <div class="contacts-header">
-                <h3>Mensajes</h3>
+                <h3>Usuarios</h3>
             </div>
             <div class="contacts-search">
                 <i class="fas fa-search" style="color:#bbb; font-size:0.8rem;"></i>
@@ -642,8 +642,15 @@ function formatDay(dateStr) {
 
     alert(type === 'video' ? 'Videollamada iniciada' : 'Llamada iniciada');
 }
-// Iniciar
-loadContacts();
+// Define initialPeer from URL parameter (if present)
+let initialPeer = <?php echo json_encode($_GET['peer'] ?? null); ?>;
+// Iniciar carga de contactos y abrir chat automáticamente si hay peer
+loadContacts().then(() => {
+    if (initialPeer) {
+        const contact = allContacts.find(u => u.email === initialPeer);
+        if (contact) openChat(contact);
+    }
+});
 </script>
 </body>
 </html>
