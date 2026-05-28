@@ -24,6 +24,7 @@ function hideAllContainers() {
 // --- Lógica de Materiales ---
 let allMaterials = [];
 let allFolders = [];
+let allRequestsGlobal = [];
 
 async function loadMaterials() {
     try {
@@ -39,14 +40,14 @@ async function loadMaterials() {
 
         allFolders = data.folders;
         allMaterials = data.materials;
-        const allRequests = data.requests;
+        allRequestsGlobal = data.requests;
 
-        renderMaterials(allRequests);
+        renderMaterials(allRequestsGlobal);
         populateFilters();
         updateFolderSelects();
 
         if (typeof userRol !== 'undefined' && userRol.toLowerCase() === 'estudiante') {
-            checkHomeAdvisors(allRequests);
+            checkHomeAdvisors(allRequestsGlobal);
         }
     } catch (err) {
         console.error("Error cargando datos:", err);
@@ -110,7 +111,7 @@ async function renderMaterials(allRequests = []) {
         folderSection.style.marginBottom = '30px';
         
         folderSection.innerHTML = `
-            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--naranja-soft); margin-bottom: 15px; cursor: pointer; padding: 10px; border-radius: 10px; transition: background 0.2s;" onclick="toggleFolder(this)">
+            <div class="materia-folder-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--naranja-soft); margin-bottom: 15px; cursor: pointer; padding: 10px; border-radius: 10px; transition: all 0.3s;" onclick="toggleFolder(this)" onmouseover="this.style.boxShadow='0 4px 15px rgba(0,0,0,0.1)'; this.style.transform='translateY(-2px)';" onmouseout="this.style.boxShadow='none'; this.style.transform='translateY(0)';">
                 <h2 style="font-family: 'Bangers'; font-size: 28px; color: var(--verde-tecno); margin: 0; display: flex; align-items: center; gap: 10px;">
                     <i class="fas fa-folder"></i> ${f.nombre}
                 </h2>
@@ -178,33 +179,54 @@ async function loadAdvisorsToJoin(targetId = 'advisors-to-join', allRequests = [
     const formData = new FormData();
     formData.append('action', 'get_advisors');
     const resp = await fetch('dashboard.php', { method: 'POST', body: formData });
-    const advisors = await resp.json();
+    let advisors = await resp.json();
+
+    const searchInput = document.getElementById('advisor-specialty-search');
+    if (searchInput) {
+        const query = searchInput.value.toLowerCase();
+        if (query) {
+            advisors = advisors.filter(a => (a.materias_inscritas || '').toLowerCase().includes(query));
+        }
+    }
 
     container.innerHTML = '';
+    if (advisors.length === 0) {
+        container.innerHTML = '<p style="grid-column: 1/-1; text-align: center; color: #888;">No se encontraron asesores con esa especialidad.</p>';
+        return;
+    }
+
     advisors.forEach(adv => {
         // No mostrarse a sí mismo
         if (adv.email === userEmail) return;
 
         const alreadyAccepted = allRequests.some(r => r.student_email === userEmail && r.advisor_email === adv.email && r.status === 'accepted');
-        const alreadyPending = allRequests.some(r => r.student_email === userEmail && r.advisor_email === adv.email && r.status === 'pending');
+        const pendingReq = allRequests.find(r => r.student_email === userEmail && r.advisor_email === adv.email && r.status === 'pending');
         
         let buttonHtml = '';
         if (alreadyAccepted) {
             buttonHtml = `<button disabled style="background: var(--verde-tecno); color: white; border: none; padding: 10px; border-radius: 10px; width: 100%; font-weight: bold; cursor: default; opacity: 0.8;"><i class="fas fa-check"></i> Ya es tu tutor</button>`;
-        } else if (alreadyPending) {
-            buttonHtml = `<button disabled style="background: #aaa; color: white; border: none; padding: 10px; border-radius: 10px; width: 100%; font-weight: bold; cursor: default; opacity: 0.8;"><i class="fas fa-clock"></i> Pendiente...</button>`;
+        } else if (pendingReq) {
+            buttonHtml = `
+                <div style="display: flex; gap: 8px; width: 100%;">
+                    <button disabled style="flex: 1; background: #aaa; color: white; border: none; padding: 10px; border-radius: 10px; font-weight: bold; cursor: default; opacity: 0.8;"><i class="fas fa-clock"></i> Pendiente</button>
+                    <button onclick="cancelRequest(${pendingReq.id})" style="background: #e74c3c; color: white; border: none; padding: 10px 15px; border-radius: 10px; cursor: pointer; font-weight: bold; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'" title="Cancelar solicitud"><i class="fas fa-times"></i></button>
+                </div>
+            `;
         } else {
-            buttonHtml = `<button onclick="requestJoin('${adv.email}')" style="background: var(--naranja-soft); color: white; border: none; padding: 8px 15px; border-radius: 10px; cursor: pointer; font-weight: bold; width: 100%; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">Solicitar Asesoría</button>`;
+            buttonHtml = `<button onclick="requestJoin('${adv.email}')" style="background: var(--naranja-soft); color: white; border: none; padding: 10px 15px; border-radius: 10px; cursor: pointer; font-weight: bold; width: 100%; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">Solicitar Asesoría</button>`;
         }
 
         const div = document.createElement('div');
         div.style = "background: #fdfaf3; padding: 15px; border-radius: 15px; border: 1px solid #eee; display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center;";
         div.innerHTML = `
             <img src="${adv.avatar || 'https://cdn-icons-png.flaticon.com/512/149/149071.png'}" style="width: 60px; height: 60px; border-radius: 50%; object-fit: cover; filter: ${adv.avatar ? 'none' : 'grayscale(1)'}; opacity: ${adv.avatar ? '1' : '0.6'};">
-            <div>
+            <div style="width: 100%;">
                 <strong style="display:block; color: #333; font-size: 1.1rem; text-transform: uppercase; font-family: 'Bangers';">${adv.nombre}</strong>
                 <span style="font-size: 12px; color: var(--verde-tecno); font-weight: bold; display: block; margin-bottom: 5px;">${adv.rol}</span>
                 <p style="font-size: 11px; color: #777; font-style: italic; max-height: 40px; overflow: hidden; line-height: 1.2;">${adv.descripcion || 'Sin descripción disponible.'}</p>
+                <div style="margin-top: 8px; font-size: 0.8rem; color: #555; background: rgba(0,0,0,0.03); padding: 4px; border-radius: 4px;">
+                    <i class="fas fa-graduation-cap" style="color:var(--naranja-soft);"></i> <strong>Especialidad:</strong> ${adv.materias_inscritas || 'No especificada'}
+                </div>
             </div>
             ${buttonHtml}
         `;
@@ -219,6 +241,15 @@ async function requestJoin(advisorEmail) {
     const resp = await fetch('dashboard.php', { method: 'POST', body: formData });
     const res = await resp.json();
     alert(res.message);
+    loadMaterials();
+}
+
+async function cancelRequest(requestId) {
+    if (!confirm("¿Seguro que quieres cancelar esta solicitud?")) return;
+    const formData = new FormData();
+    formData.append('action', 'cancel_request');
+    formData.append('request_id', requestId);
+    await fetch('dashboard.php', { method: 'POST', body: formData });
     loadMaterials();
 }
 
@@ -970,3 +1001,25 @@ function joinEventMeeting(eventId, eventTitle, isCreator) {
     );
 }
 
+document.addEventListener('DOMContentLoaded', () => {
+    const searchInput = document.getElementById('advisor-specialty-search');
+    if (searchInput) {
+        searchInput.addEventListener('input', () => {
+            loadAdvisorsToJoin('home-advisors-grid', allRequestsGlobal);
+        });
+    }
+
+    const materialSearch = document.getElementById('material-search');
+    if (materialSearch) {
+        materialSearch.addEventListener('input', () => {
+            renderMaterials(allRequestsGlobal);
+        });
+    }
+
+    const materialFilter = document.getElementById('filter-materia');
+    if (materialFilter) {
+        materialFilter.addEventListener('change', () => {
+            renderMaterials(allRequestsGlobal);
+        });
+    }
+});

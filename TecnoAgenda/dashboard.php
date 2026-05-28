@@ -93,7 +93,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     // USUARIOS / ASESORES
     if ($action === 'get_advisors') {
         $stmt = $conexion->prepare("
-            SELECT nombre, email, rol, carrera, semestre, avatar
+            SELECT nombre, email, rol, carrera, semestre, avatar, descripcion, materias_inscritas
             FROM usuarios
             WHERE LOWER(rol) IN ('docente', 'tutor')
             AND email <> :email
@@ -136,6 +136,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             ':advisor_email' => $_POST['advisor_email']
         ]);
         echo json_encode(['status' => 'success', 'message' => 'Solicitud enviada correctamente.']);
+        exit;
+    }
+
+    if ($action === 'cancel_request' && $userRol === 'estudiante') {
+        $stmt = $conexion->prepare("DELETE FROM solicitudes WHERE id = :id AND student_email = :student_email");
+        $stmt->execute([
+            ':id' => $_POST['request_id'],
+            ':student_email' => $user['email']
+        ]);
+        echo json_encode(['status' => 'success']);
         exit;
     }
 
@@ -354,6 +364,52 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         exit;
     }
 
+    // PERFIL
+    if ($action === 'update_profile') {
+        // En caso de que se envíe como raw JSON (fallback)
+        if (empty($_POST['nombre'])) {
+            $input = json_decode(file_get_contents('php://input'), true);
+            if ($input) $_POST = array_merge($_POST, $input);
+        }
+
+        $stmt = $conexion->prepare("
+            UPDATE usuarios 
+            SET nombre = :nombre, fecha_nacimiento = :fecha, carrera = :carrera, semestre = :semestre, 
+                descripcion = :descripcion, materias_inscritas = :materias, avatar = :avatar
+                " . (!empty($_POST['password']) ? ", password = :password" : "") . "
+            WHERE email = :email
+        ");
+        
+        $params = [
+            ':nombre' => $_POST['nombre'],
+            ':fecha' => $_POST['fechaNacimiento'],
+            ':carrera' => $_POST['carrera'],
+            ':semestre' => $_POST['semestre'],
+            ':descripcion' => $_POST['descripcion'],
+            ':materias' => $_POST['materias'],
+            ':avatar' => $_POST['avatar'],
+            ':email' => $user['email']
+        ];
+
+        if (!empty($_POST['password'])) {
+            $params[':password'] = password_hash($_POST['password'], PASSWORD_DEFAULT);
+        }
+
+        $stmt->execute($params);
+
+        // Update session
+        $_SESSION['user']['nombre'] = $_POST['nombre'];
+        $_SESSION['user']['fecha_nacimiento'] = $_POST['fechaNacimiento'];
+        $_SESSION['user']['carrera'] = $_POST['carrera'];
+        $_SESSION['user']['semestre'] = $_POST['semestre'];
+        $_SESSION['user']['descripcion'] = $_POST['descripcion'];
+        $_SESSION['user']['materias_inscritas'] = $_POST['materias'];
+        $_SESSION['user']['avatar'] = $_POST['avatar'];
+
+        echo json_encode(['status' => 'success', 'message' => 'Perfil actualizado correctamente']);
+        exit;
+    }
+
     echo json_encode(['status' => 'error', 'message' => 'Acción no reconocida: ' . $action]);
     exit;
 }
@@ -407,6 +463,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         .logout-btn { background-color: #d9534f; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; margin-top: 20px; }
 
         /* Profile */
+        .topbar-user-menu { position: relative; }
+        .user-btn { display: flex; align-items: center; gap: 12px; cursor: pointer; padding: 5px 12px; border-radius: 25px; transition: background 0.2s; }
+        .user-btn:hover { background: rgba(0,0,0,0.05); }
+        .user-btn-name { font-weight: 700; font-size: 1.1rem; }
+        .user-btn img { width: 38px; height: 38px; border-radius: 50%; object-fit: cover; border: 2px solid #333; }
+        .user-dropdown { display: none; position: absolute; right: 0; top: 115%; background: #fff; box-shadow: 0 10px 25px rgba(0,0,0,0.15); border-radius: 15px; overflow: hidden; min-width: 220px; z-index: 1000; flex-direction: column; border: 1px solid rgba(0,0,0,0.05); }
+        .dropdown-item { padding: 14px 20px; cursor: pointer; display: flex; align-items: center; gap: 12px; font-weight: 600; font-size: 0.95rem; color: #333; transition: background 0.2s; }
+        .dropdown-item:not(:last-child) { border-bottom: 1px solid #f0f0f0; }
+        .dropdown-item:hover { background: #f9f9f9; }
+        .dropdown-item.danger { color: #d9534f; }
+        .dropdown-item.danger:hover { background: #fdf2f2; }
+        
         .profile-container { display: none; width: 100%; max-width: 950px; margin: 0 auto; gap: 25px; }
         .profile-container.active { display: flex; }
         .profile-left { width: 320px; background-color: #e8e4d9; border-radius: 12px; padding: 40px 30px; border: 1px solid #d5d0c3; display: flex; flex-direction: column; align-items: center; }
@@ -854,6 +922,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         body.dark-theme .contact-card, body.dark-theme .calls-side-card { background: #252525; border-color: #333; }
         body.dark-theme .btn-dash-light { background: #333; color: #f0f0f0; }
         body.dark-theme .student-pref-card { background: #252525; }
+        
+        body.dark-theme .user-dropdown { background: #252525; border-color: #333; box-shadow: 0 10px 25px rgba(0,0,0,0.4); }
+        body.dark-theme .dropdown-item { color: #f0f0f0; border-bottom-color: #333; }
+        body.dark-theme .dropdown-item:hover { background: #333; }
+        body.dark-theme .user-btn:hover { background: rgba(255,255,255,0.05); }
+        body.dark-theme .user-btn img { border-color: #f0f0f0; }
+        body.dark-theme .dropdown-item.danger:hover { background: rgba(217,83,79,0.15); }
     </style>
     <!-- Jitsi Meet External API -->
     <script src='https://meet.jit.si/external_api.js'></script>
@@ -907,8 +982,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     <div class="main-container">
         <header class="topbar">
             <div class="topbar-title" style="font-family: 'Bangers'; font-size: 3rem;">TECNO AGENDA</div>
-            <div class="topbar-icons">
-                <i class="fas fa-user-circle" style="font-size: 2.2rem;"></i>
+            <div class="topbar-user-menu">
+                <div class="user-btn" id="user-btn">
+                    <span class="user-btn-name"><?php echo htmlspecialchars($user['nombre']); ?></span>
+                    <img src="<?php echo isset($user['avatar']) && !empty($user['avatar']) ? htmlspecialchars($user['avatar']) : 'https://cdn-icons-png.flaticon.com/512/149/149071.png'; ?>" alt="User">
+                </div>
+                <div class="user-dropdown" id="user-dropdown">
+                    <div class="dropdown-item" id="btn-dropdown-profile">
+                        <i class="fas fa-user-edit" style="color:var(--verde-tecno); font-size: 1.1rem;"></i> Editar perfil
+                    </div>
+                    <div class="dropdown-item danger" onclick="logout()">
+                        <i class="fas fa-sign-out-alt" style="font-size: 1.1rem;"></i> Cerrar sesión
+                    </div>
+                </div>
             </div>
         </header>
 
@@ -1042,6 +1128,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             <?php if ($user['rol'] === 'Estudiante'): ?>
             <div id="home-advisors-list" style="margin-top: 40px; width: 100%; max-width: 1000px; margin-left: auto; margin-right: auto; display: none;">
                 <h3 style="color: var(--verde-tecno); font-family: 'Bangers'; font-size: 32px; margin-bottom: 25px; text-align: center; text-transform: uppercase; text-shadow: 2px 2px 0px rgba(255,255,255,0.5);">Únete a una Asesoría</h3>
+                
+                <div style="margin-bottom: 25px; display: flex; justify-content: flex-end;">
+                    <div style="position: relative; width: 100%; max-width: 350px;">
+                        <input type="text" id="advisor-specialty-search" placeholder="Filtrar por especialidad (ej. Matemáticas)..." style="width: 100%; padding: 12px 15px 12px 40px; border-radius: 10px; border: 1px solid #ddd; outline: none; background: #fff;">
+                        <i class="fas fa-filter" style="position: absolute; left: 15px; top: 50%; transform: translateY(-50%); color: #aaa;"></i>
+                    </div>
+                </div>
+
                 <div id="home-advisors-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 25px;"></div>
             </div>
             <?php endif; ?>
@@ -1076,8 +1170,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                             </div>
                             <div class="input-grp"><label>Semestre</label><input type="number" id="prof-semestre" value="<?php echo $user['semestre']; ?>" readonly></div>
                             <div class="input-grp"><label>Rol</label><input type="text" id="prof-rol" value="<?php echo $user['rol']; ?>" readonly class="locked"></div>
-                            <div class="input-grp full-width"><label>Contraseña</label><div class="icon-input"><input type="password" id="prof-pass" value="<?php echo htmlspecialchars($user['password']); ?>" readonly><i class="fas fa-eye-slash" id="toggle-prof-pass"></i></div></div>
-                            <div class="input-grp full-width" id="materias-grp" <?php echo (strtolower(trim($user['rol'] ?? '')) === 'estudiante') ? 'style="display:none;"' : ''; ?>><label>Materias que Imparto</label><input type="text" id="prof-materias" value="<?php echo htmlspecialchars(implode(', ', $user['materias_inscritas'] ?? [])); ?>" readonly></div>
+                            <div class="input-grp full-width"><label>Contraseña</label><div class="icon-input"><input type="password" id="prof-pass" placeholder="Dejar en blanco para no cambiar" readonly><i class="fas fa-eye-slash" id="toggle-prof-pass"></i></div></div>
+                            <div class="input-grp full-width" id="materias-grp" <?php echo (strtolower(trim($user['rol'] ?? '')) === 'estudiante') ? 'style="display:none;"' : ''; ?>><label>Especialidad / Materias que Imparto</label><input type="text" id="prof-materias" value="<?php echo htmlspecialchars($user['materias_inscritas'] ?? ''); ?>" placeholder="Ej. Matemáticas, Programación..." readonly></div>
                         </div>
                     </div>
                 </div>
@@ -1530,28 +1624,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
             if (menuBtn) menuBtn.addEventListener('click', () => sidebar.classList.toggle('expanded'));
 
-            if (userCircle) {
-                userCircle.addEventListener('click', () => {
+            const userBtn = document.getElementById('user-btn');
+            const userDropdown = document.getElementById('user-dropdown');
+            const btnDropdownProfile = document.getElementById('btn-dropdown-profile');
+
+            if (userBtn && userDropdown) {
+                userBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    userDropdown.style.display = userDropdown.style.display === 'flex' ? 'none' : 'flex';
+                });
+            }
+
+            document.addEventListener('click', () => {
+                if (userDropdown) userDropdown.style.display = 'none';
+            });
+
+            if (btnDropdownProfile) {
+                btnDropdownProfile.addEventListener('click', () => {
                     const profileContainer = document.getElementById('profile-container');
-                    if (profileContainer.classList.contains('active')) {
-                        hideAllContainers();
-                        if (userRol.toLowerCase() === 'estudiante') {
-                            document.getElementById('welcome-card').style.display = 'block';
-                            const advisorsList = document.getElementById('home-advisors-list');
-                            if (advisorsList) advisorsList.style.display = 'block';
-                        } else {
-                            const dash = document.getElementById('admin-dash-container');
-                            dash.style.display = 'flex';
-                            dash.classList.add('active');
-                            loadAdminDashboard();
-                        }
-                        topbarTitle.textContent = 'TECNO AGENDA';
-                    } else {
-                        hideAllContainers();
-                        profileContainer.style.display = 'flex';
-                        profileContainer.classList.add('active');
-                        topbarTitle.textContent = 'PERFIL';
-                    }
+                    hideAllContainers();
+                    profileContainer.style.display = 'flex';
+                    profileContainer.classList.add('active');
+                    topbarTitle.textContent = 'PERFIL';
                 });
             }
 

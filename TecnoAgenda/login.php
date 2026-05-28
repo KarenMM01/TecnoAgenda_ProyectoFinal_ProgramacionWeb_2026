@@ -134,17 +134,79 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     // =========================
+    // OLVIDÉ MI CONTRASEÑA — Generar token
+    // =========================
+    if ($data['action'] === 'forgot_password') {
+        $email = trim($data['email'] ?? '');
+
+        if (empty($email)) {
+            echo json_encode(['status' => 'error', 'message' => 'Ingresa un correo válido.']);
+            exit;
+        }
+
+        // Verificar que el correo exista
+        $stmt = $conexion->prepare("SELECT id FROM usuarios WHERE email = :email");
+        $stmt->execute([':email' => $email]);
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$user) {
+            echo json_encode(['status' => 'error', 'message' => 'No existe ninguna cuenta con ese correo.']);
+            exit;
+        }
+
+        // Asegurarse de que las columnas existen (ejecutar una vez)
+        try {
+            $conexion->exec("
+                ALTER TABLE usuarios
+                ADD COLUMN IF NOT EXISTS reset_token VARCHAR(64),
+                ADD COLUMN IF NOT EXISTS reset_token_expires TIMESTAMP
+            ");
+        } catch (Exception $e) { /* columnas ya existen */ }
+
+        // Generar token seguro
+        $token = bin2hex(random_bytes(32));
+        $expires = date('Y-m-d H:i:s', strtotime('+1 hour'));
+
+        $upd = $conexion->prepare("
+            UPDATE usuarios
+            SET reset_token = :token, reset_token_expires = :expires
+            WHERE email = :email
+        ");
+        $upd->execute([':token' => $token, ':expires' => $expires, ':email' => $email]);
+
+        // Construir link
+        $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+        $host = $_SERVER['HTTP_HOST'];
+        $dir  = dirname($_SERVER['REQUEST_URI']);
+        $link = $protocol . '://' . $host . $dir . '/reset_password.php?token=' . $token;
+
+        echo json_encode([
+            'status'  => 'success',
+            'message' => '¡Enlace generado! Cópialo y ábrelo en el navegador.',
+            'link'    => $link
+        ]);
+        exit;
+    }
+
+    // =========================
     // LOGIN GOOGLE
     // =========================
     if ($data['action'] === 'google_login') {
         $token = $data['credential'];
         
-        $response = @file_get_contents('https://oauth2.googleapis.com/tokeninfo?id_token=' . $token);
+        // Intentar como Access Token (oauth2)
+        $response = @file_get_contents('https://www.googleapis.com/oauth2/v3/userinfo?access_token=' . $token);
+        
+        // Si falla, intentar como ID Token (flujo viejo)
+        if (!$response) {
+            $response = @file_get_contents('https://oauth2.googleapis.com/tokeninfo?id_token=' . $token);
+        }
+        
         if ($response) {
             $payload = json_decode($response, true);
             if (isset($payload['email'])) {
                 $email = $payload['email'];
-                $nombre = $payload['name'];
+                $nombre = $payload['name'] ?? 'Usuario';
                 $avatar = $payload['picture'] ?? null;
 
                 $stmt = $conexion->prepare("SELECT * FROM usuarios WHERE email = :email");
@@ -624,6 +686,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             .full { grid-column: span 1; }
             .mobile-toggle { display: none !important; }
         }
+        /* === Modal Forgot Password === */
+        @keyframes popIn {
+            from { opacity: 0; transform: scale(0.85); }
+            to   { opacity: 1; transform: scale(1); }
+        }
     </style>
 </head>
 
@@ -718,13 +785,110 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <i class="ph ph-eye-slash toggle-password" data-target="login-password"></i>
                     </div>
                 </div>
+                <!-- Botón olvidé mi contraseña -->
+                <button type="button" id="forgot-btn" style="
+                    background: transparent;
+                    border: none;
+                    padding: 4px 0;
+                    margin-top: 2px;
+                    font-size: 0.8rem;
+                    font-weight: 500;
+                    color: #555;
+                    text-decoration: underline;
+                    cursor: pointer;
+                    letter-spacing: 0;
+                    text-transform: none;
+                    transition: color 0.2s;
+                " onmouseover="this.style.color='#000'" onmouseout="this.style.color='#555'">¿Olvidaste tu contraseña?</button>
                 <button type="submit">Iniciar Sesión</button>
                 <div id="login-message" class="msg"></div>
 
-                <div id="google-btn-container" style="display: flex; justify-content: center; margin-top: 15px;"></div>
+                <!-- Botón Google estilo link -->
+                <button type="button" id="google-custom-btn" onclick="signInWithGoogle()" style="
+                    background: transparent;
+                    border: none;
+                    padding: 5px 0;
+                    margin-top: 6px;
+                    font-size: 0.82rem;
+                    font-weight: 500;
+                    color: #555;
+                    cursor: pointer;
+                    letter-spacing: 0;
+                    text-transform: none;
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 7px;
+                    transition: color 0.2s;
+                " onmouseover="this.style.color='#000'" onmouseout="this.style.color='#555'">
+                    <!-- Logo Google SVG oficial -->
+                    <svg width="16" height="16" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+                        <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+                        <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+                        <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+                        <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+                        <path fill="none" d="M0 0h48v48H0z"/>
+                    </svg>
+                    Iniciar sesión con Google
+                </button>
                 
                 <p class="mobile-toggle" style="display:none; cursor:pointer; color:var(--verde-tecno); font-weight:bold; margin-top:15px; text-decoration: underline;" id="mobileSignUp">¿No tienes cuenta? Regístrate</p>
             </form>
+        </div>
+
+        <!-- ===== MODAL: OLVIDÉ MI CONTRASEÑA ===== -->
+        <div id="forgot-modal" style="
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.45);
+            backdrop-filter: blur(4px);
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+        ">
+            <div style="
+                background: #fdfaf3;
+                border-radius: 20px;
+                padding: 40px 36px;
+                max-width: 420px;
+                width: 90%;
+                box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+                position: relative;
+                animation: popIn 0.3s cubic-bezier(.175,.885,.32,1.275);
+            ">
+                <!-- Cerrar -->
+                <button type="button" onclick="closeForgotModal()" style="
+                    position: absolute; top: 14px; right: 16px;
+                    background: transparent; border: none; font-size: 1.4rem;
+                    cursor: pointer; color: #888; padding: 0; margin: 0;
+                    line-height: 1; text-transform: none; letter-spacing: 0;
+                ">×</button>
+
+                <!-- Ícono -->
+                <div style="text-align:center; margin-bottom: 18px;">
+                    <div style="
+                        width: 64px; height: 64px;
+                        background: var(--crema-fondo);
+                        border-radius: 50%;
+                        display: inline-flex;
+                        align-items: center;
+                        justify-content: center;
+                        font-size: 2rem;
+                    ">🔑</div>
+                </div>
+
+                <h2 style="text-align:center; font-size: 1.3rem; margin-bottom: 8px;">¿Olvidaste tu contraseña?</h2>
+                <p style="text-align:center; font-size: 0.85rem; color: #666; margin: 0 0 22px;">Ingresa tu correo registrado. Si existe, abriremos la página para restablecer tu contraseña.</p>
+
+                <div class="input-group" style="width: 100%;">
+                    <label>Correo electrónico</label>
+                    <input type="email" id="forgot-email" placeholder="usuario@itess.edu.mx" onkeydown="if(event.key==='Enter'){submitForgotPassword();}">
+                </div>
+
+                <button type="button" id="forgot-submit-btn" onclick="submitForgotPassword()" style="width: 100%; margin-top: 16px;">Confirmar y continuar</button>
+
+                <div id="forgot-message" class="msg" style="margin-top: 12px; text-align:center;"></div>
+            </div>
         </div>
 
         <div class="form-container sign-in-container" id="two-factor-container" style="display:none; z-index: 10; background: #fdfaf3;">
@@ -932,6 +1096,81 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             document.getElementById('tfa-message').textContent = '';
         }
 
+        // ===== FORGOT PASSWORD =====
+        document.getElementById('forgot-btn').addEventListener('click', function () {
+            const modal = document.getElementById('forgot-modal');
+            modal.style.display = 'flex';
+            // Pre-rellenar si ya hay un correo escrito
+            const emailVal = document.getElementById('login-email').value.trim();
+            if (emailVal) document.getElementById('forgot-email').value = emailVal;
+            document.getElementById('forgot-message').textContent = '';
+            document.getElementById('forgot-message').className = 'msg';
+            document.getElementById('forgot-link-area').style.display = 'none';
+            document.getElementById('copy-confirm').style.display = 'none';
+        });
+
+        function closeForgotModal() {
+            document.getElementById('forgot-modal').style.display = 'none';
+            document.getElementById('forgot-email').value = '';
+            document.getElementById('forgot-message').textContent = '';
+            document.getElementById('forgot-link-area').style.display = 'none';
+        }
+
+        // Cerrar modal al hacer click fuera
+        document.getElementById('forgot-modal').addEventListener('click', function (e) {
+            if (e.target === this) closeForgotModal();
+        });
+
+        async function submitForgotPassword() {
+            const email = document.getElementById('forgot-email').value.trim();
+            const msgEl = document.getElementById('forgot-message');
+            const btn   = document.getElementById('forgot-submit-btn');
+
+            if (!email) {
+                msgEl.textContent = 'Por favor ingresa tu correo.';
+                msgEl.className = 'msg error';
+                return;
+            }
+
+            btn.disabled = true;
+            btn.textContent = 'Verificando...';
+            msgEl.textContent = '';
+            msgEl.className = 'msg';
+
+            try {
+                const res = await fetch('login.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'forgot_password', email })
+                });
+                const result = await res.json();
+
+                if (result.status === 'success' && result.link) {
+                    // Correo encontrado → abrir automáticamente en nueva pestaña
+                    msgEl.className = 'msg success';
+                    msgEl.textContent = '✓ Correo verificado. Redirigiendo...';
+                    setTimeout(() => {
+                        window.location.href = result.link;
+                    }, 800);
+                } else {
+                    // Correo no existe u otro error
+                    msgEl.className = 'msg error';
+                    msgEl.textContent = result.message;
+                    // Sacudir el input para feedback visual
+                    const input = document.getElementById('forgot-email');
+                    input.style.transition = 'box-shadow 0.1s';
+                    input.style.boxShadow = '0 0 0 3px rgba(217,83,79,0.35)';
+                    setTimeout(() => input.style.boxShadow = '', 1200);
+                }
+            } catch (err) {
+                msgEl.className = 'msg error';
+                msgEl.textContent = 'Error al conectar con el servidor.';
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Confirmar y continuar';
+            }
+        }
+
         // Google Sign-In Callback
         async function handleCredentialResponse(response) {
             const loginMessage = document.getElementById('login-message');
@@ -939,10 +1178,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             loginMessage.className = 'msg';
             
             try {
+                // response.access_token is what we get from initTokenClient
+                const token = response.access_token || response.credential;
+                
                 const res = await fetch('login.php', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action: 'google_login', credential: response.credential })
+                    body: JSON.stringify({ action: 'google_login', credential: token })
                 });
                 const result = await res.json();
                 
@@ -962,16 +1204,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
+        let tokenClient;
         window.onload = function () {
-            google.accounts.id.initialize({
-                client_id: "TU_CLIENT_ID_DE_GOOGLE", // <-- PEGA TU CLIENT ID AQUI
-                callback: handleCredentialResponse
-            });
-            google.accounts.id.renderButton(
-                document.getElementById("google-btn-container"),
-                { theme: "outline", size: "large", width: 280, text: "continue_with" }
-            );
+            try {
+                // Usamos initTokenClient para poder usar un botón personalizado y abrir el popup
+                tokenClient = google.accounts.oauth2.initTokenClient({
+                    client_id: "352598767449-s6g7a6s9hj1bs42iimfejmtblpvurase.apps.googleusercontent.com", // Tu Client ID
+                    scope: 'email profile',
+                    callback: handleCredentialResponse
+                });
+            } catch(e) {
+                console.warn('Google Identity Services no pudo inicializarse:', e);
+            }
         };
+
+        function signInWithGoogle() {
+            try {
+                // Esto abre el popup oficial de Google
+                tokenClient.requestAccessToken();
+            } catch(e) {
+                console.error("Google Auth Error:", e);
+                const loginMessage = document.getElementById('login-message');
+                loginMessage.textContent = 'Error Google: ' + (e.message || e);
+                loginMessage.className = 'msg error';
+            }
+        }
 
         // Toggle Password Visibility
         document.querySelectorAll('.toggle-password').forEach(icon => {
